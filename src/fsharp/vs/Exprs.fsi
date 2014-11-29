@@ -61,8 +61,8 @@ and [<Sealed>]  FSharpExpr =
 
 /// Represents a checked method in an object expression, as seen by the F# language.  
 and [<Sealed>]  FSharpObjectExprOverride = 
-    /// The overridden member of the base class
-    member OverriddenMember : FSharpMemberFunctionOrValue 
+    /// The overridden member of the base class. If 'None' then the corresponding overridden member could not be found.
+    member OverriddenMember : FSharpMemberFunctionOrValue option
     /// The generic parameters of the method
     member GenericParameters : FSharpGenericParameter list
     /// The parameters of the method

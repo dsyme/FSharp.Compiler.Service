@@ -427,6 +427,8 @@ and [<Class>] FSharpGenericParameter =
     /// Get the declared or inferred constraints for the type parameter
     member Constraints: IList<FSharpGenericParameterConstraint> 
 
+    member internal V: Tast.Typar
+
 /// A subtype of FSharpSymbol that represents a static parameter to an F# type provider
 and [<Class>] FSharpStaticParameter = 
 
@@ -817,6 +819,8 @@ and [<Class>] FSharpType =
     /// Get the base type, if any, taking into account the instantiation of this type
     /// if it is an instantiation of a generic type.
     member BaseType : FSharpType option
+
+    member internal V : Tast.TType
 
     [<System.Obsolete("Renamed to HasTypeDefinition")>]
     member IsNamedType : bool

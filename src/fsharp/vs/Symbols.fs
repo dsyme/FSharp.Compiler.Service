@@ -1642,15 +1642,15 @@ and FSharpType(cenv, typ:TType) =
         |> Option.map (fun ty -> FSharpType(cenv, ty)) 
 
     member x.Instantiate(tys:(FSharpGenericParameter * FSharpType) list) = 
-        let typI = instType (tys |> List.map (fun (tyv,typ) -> tyv.V, typ.Typ)) typ
+        let typI = instType (tys |> List.map (fun (tyv,typ) -> tyv.V, typ.V)) typ
         FSharpType(cenv, typI)
 
-    member private x.Typ = typ
+    member internal x.V = typ
 
     override x.Equals(other : obj) =
         box x === other ||
         match other with
-        |   :? FSharpType as t -> typeEquiv cenv.g typ t.Typ
+        |   :? FSharpType as t -> typeEquiv cenv.g typ t.V
         |   _ -> false
 
     override x.GetHashCode() = hash x

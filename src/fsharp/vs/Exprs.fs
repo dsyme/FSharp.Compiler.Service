@@ -117,7 +117,7 @@ type E =
     | ILAsm of string * FSharpType list * FSharpExpr list
 
 /// Used to represent the information at an object expression member 
-and [<Sealed>]  FSharpObjectExprOverride(mv:FSharpMemberFunctionOrValue, gps: FSharpGenericParameter list, args:FSharpMemberFunctionOrValue list list, body: FSharpExpr) = 
+and [<Sealed>]  FSharpObjectExprOverride(mv:FSharpMemberFunctionOrValue option, gps: FSharpGenericParameter list, args:FSharpMemberFunctionOrValue list list, body: FSharpExpr) = 
     member __.OverriddenMember = mv
     member __.GenericParameters = gps
     member __.CurriedParameterGroups = args
@@ -398,43 +398,44 @@ module FSharpExprConvert =
         | Expr.TyChoose _  -> 
             ConvExprPrim cenv env (Typrelns.ChooseTyparSolutionsForFreeChoiceTypars cenv.g cenv.amap expr)
 
-        | Expr.Obj (_lambdaId,typ,_basev,basecall,overrides, iimpls,_m)      -> 
+        | Expr.Obj (_lambdaId,typ,_basev,basecall,overrides, iimpls,m)      -> 
             let basecallR = ConvExpr cenv env basecall
-            let FindOverridenMember (ty : FSharpType) name (tpsR : FSharpGenericParameter list) (vslR : FSharpMemberOrFunctionOrValue list list) (bodyR : FSharpExpr) =
-                assert ty.HasTypeDefinition
-                let baseTypeMembers = ty.TypeDefinition.MembersFunctionsAndValues
-                let fsharpMembersWithName = 
-                    baseTypeMembers |> Seq.filter (fun mv ->
-                        // TODO : LogicalName vs CompiledName etc. Is this safe?
-                        mv.LogicalName = name) |> Seq.toList
-                let fsharpMembersWithReturnType =
-                    match fsharpMembersWithName with
-                    | [_] -> fsharpMembersWithName
-                    | candidateMembers -> 
-                        let returnType = bodyR.Type
-                        candidateMembers |> List.filter (fun mv -> mv.ReturnParameter.Type = returnType)
-                let fsharpMembersWithTypeParameters =
-                    match fsharpMembersWithReturnType with
-                    | [_] -> fsharpMembersWithReturnType
-                    | candidateMembers -> candidateMembers |> List.filter (fun mv -> tpsR = Seq.toList mv.GenericParameters)
-                match fsharpMembersWithTypeParameters with
-                | [fsharpMember] -> fsharpMember
-                | candidateMembers ->
-                    let overrideParameterTypes = 
-                        vslR |> List.map (fun vs -> vs |> List.map (fun v -> v.FullType))
-                    candidateMembers |> List.find (fun mv ->
-                        let memberParameterTypes = 
-                            mv.CurriedParameterGroups |> Seq.map (fun cps -> cps |> Seq.map (fun cp -> cp.Type) |> Seq.toList) |> Seq.toList
-                        overrideParameterTypes = memberParameterTypes)
+            let FindOverridenMember (slotsig: SlotSig) =
+                assert isAppTy cenv.g slotsig.ImplementedType // the implemented type is a nominal type, after removing abbreviations etc.
+                let tcref = tcrefOfAppTy cenv.g slotsig.ImplementedType
+                let baseTy = FSharpEntity(cenv, tcref)
+                let baseTypeMembers = baseTy.MembersFunctionsAndValues
+                let candidateMembers = baseTypeMembers |> Seq.filter (fun mv -> mv.LogicalName = slotsig.Name) |> Seq.toList
+
+                match candidateMembers with
+                | [res] -> Some res
+                | candidateMembers -> 
+                let aenv = TypeEquivEnv.FromEquivTypars (tcref.Typars(m)) slotsig.ClassTypars
+
+                // Filter for number of generic type parameters and equality of parameter types
+                let candidateMembers = 
+                    candidateMembers |> List.filter (fun mv -> 
+                        Seq.length mv.GenericParameters = slotsig.MethodTypars.Length &&
+                        let gtps1 = [ for gp in mv.GenericParameters -> gp.V ]
+                        let aenv = aenv.BindEquivTypars gtps1 slotsig.MethodTypars
+                        let params1 = mv.CurriedParameterGroups |> Seq.map Seq.toList |> Seq.toList
+                        // Note, we re skipping the comparison of return types, it is not needed since overloading by return
+                        // type is not permitted.
+                        //returnTypesAEquiv cenv.g aenv mv.ReturnParameter.Type.Typ slotsig.FormalReturnType &&
+                        ((params1,slotsig.FormalParams) ||> List.lengthsEqAndForall2 (List.lengthsEqAndForall2 (fun p1 p2 -> typeAEquiv cenv.g aenv p1.Type.Typ p2.Type))))
+
+                match candidateMembers with
+                | res :: _ -> Some res
+                | [] -> None
+
             let ConvertMethods methods = 
-                [ for (TObjExprMethod(_slotsig,_,tps,tmvs,body,_)) in methods -> 
+                [ for (TObjExprMethod(slotsig,_,tps,tmvs,body,_)) in methods -> 
                     let vslR = List.map (List.map (ConvVal cenv)) tmvs 
                     let tpsR = [ for tp in tps -> FSharpGenericParameter(cenv,tp) ]
                     let env = ExprTranslationEnv.Empty.BindTypars (Seq.zip tps tpsR |> Seq.toList)
                     let env = env.BindCurriedVals tmvs
                     let bodyR = ConvExpr cenv env body
-                    let baseTy = ConvType cenv _slotsig.ImplementedType
-                    let overriddenMember = FindOverridenMember baseTy _slotsig.Name tpsR vslR bodyR
+                    let overriddenMember = FindOverridenMember slotsig
                     FSharpObjectExprOverride(overriddenMember, tpsR, vslR, bodyR) ]
             let overridesR = ConvertMethods overrides 
             let iimplsR = List.map (fun (ty,impls) -> ConvType cenv ty, ConvertMethods impls) iimpls
