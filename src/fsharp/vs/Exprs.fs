@@ -117,7 +117,8 @@ type E =
     | ILAsm of string * FSharpType list * FSharpExpr list
 
 /// Used to represent the information at an object expression member 
-and [<Sealed>]  FSharpObjectExprOverride(gps: FSharpGenericParameter list, args:FSharpMemberFunctionOrValue list list, body: FSharpExpr) = 
+and [<Sealed>]  FSharpObjectExprOverride(mv:FSharpMemberFunctionOrValue, gps: FSharpGenericParameter list, args:FSharpMemberFunctionOrValue list list, body: FSharpExpr) = 
+    member __.OverriddenMember = mv
     member __.GenericParameters = gps
     member __.CurriedParameterGroups = args
     member __.Body = body
@@ -399,6 +400,32 @@ module FSharpExprConvert =
 
         | Expr.Obj (_lambdaId,typ,_basev,basecall,overrides, iimpls,_m)      -> 
             let basecallR = ConvExpr cenv env basecall
+            let FindOverridenMember (ty : FSharpType) name (tpsR : FSharpGenericParameter list) (vslR : FSharpMemberOrFunctionOrValue list list) (bodyR : FSharpExpr) =
+                assert ty.HasTypeDefinition
+                let baseTypeMembers = ty.TypeDefinition.MembersFunctionsAndValues
+                let fsharpMembersWithName = 
+                    baseTypeMembers |> Seq.filter (fun mv ->
+                        // TODO : LogicalName vs CompiledName etc. Is this safe?
+                        mv.LogicalName = name) |> Seq.toList
+                let fsharpMembersWithReturnType =
+                    match fsharpMembersWithName with
+                    | [_] -> fsharpMembersWithName
+                    | candidateMembers -> 
+                        let returnType = bodyR.Type
+                        candidateMembers |> List.filter (fun mv -> mv.ReturnParameter.Type = returnType)
+                let fsharpMembersWithTypeParameters =
+                    match fsharpMembersWithReturnType with
+                    | [_] -> fsharpMembersWithReturnType
+                    | candidateMembers -> candidateMembers |> List.filter (fun mv -> tpsR = Seq.toList mv.GenericParameters)
+                match fsharpMembersWithTypeParameters with
+                | [fsharpMember] -> fsharpMember
+                | candidateMembers ->
+                    let overrideParameterTypes = 
+                        vslR |> List.map (fun vs -> vs |> List.map (fun v -> v.FullType))
+                    candidateMembers |> List.find (fun mv ->
+                        let memberParameterTypes = 
+                            mv.CurriedParameterGroups |> Seq.map (fun cps -> cps |> Seq.map (fun cp -> cp.Type) |> Seq.toList) |> Seq.toList
+                        overrideParameterTypes = memberParameterTypes)
             let ConvertMethods methods = 
                 [ for (TObjExprMethod(_slotsig,_,tps,tmvs,body,_)) in methods -> 
                     let vslR = List.map (List.map (ConvVal cenv)) tmvs 
@@ -406,10 +433,11 @@ module FSharpExprConvert =
                     let env = ExprTranslationEnv.Empty.BindTypars (Seq.zip tps tpsR |> Seq.toList)
                     let env = env.BindCurriedVals tmvs
                     let bodyR = ConvExpr cenv env body
-                    FSharpObjectExprOverride(tpsR, vslR, bodyR) ]
+                    let baseTy = ConvType cenv _slotsig.ImplementedType
+                    let overriddenMember = FindOverridenMember baseTy _slotsig.Name tpsR vslR bodyR
+                    FSharpObjectExprOverride(overriddenMember, tpsR, vslR, bodyR) ]
             let overridesR = ConvertMethods overrides 
             let iimplsR = List.map (fun (ty,impls) -> ConvType cenv ty, ConvertMethods impls) iimpls
-
             E.ObjectExpr(ConvType cenv typ, basecallR, overridesR, iimplsR)
 
         | Expr.Op(op,tyargs,args,m) -> 
