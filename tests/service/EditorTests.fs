@@ -479,4 +479,25 @@ type DU = Case1
         r.StartLine, r.StartColumn, r.EndLine, r.EndColumn)
     |> shouldEqual [|(2, 10, 2, 15); (2, 5, 2, 7); (1, 0, 1, 0)|]
 
- 
+(*
+[<Test>]
+let ``Completion example`` () = 
+    let input = 
+      """
+List<int>. 
+"""
+
+    let file = "/home/user/Test2.fsx"
+    let untyped, typeCheckResults = parseAndTypeCheckFileInProject(file, input) 
+    //typeCheckResults.GetDeclarationListSymbols(Some untyped, 2, 13, "let _ = List.", ["List"], "",(fun _ -> false)) |> Async.RunSynchronously |> List.length 
+      (* 64 *) 
+    typeCheckResults.GetDeclarationListSymbols(Some untyped, 2, 10, "List<int>.", [], "",(fun _ -> false)) |> Async.RunSynchronously |> List.length
+      (* 2 *)
+(*
+    |> Array.map (fun su -> 
+        let r = su.RangeAlternate 
+        r.StartLine, r.StartColumn, r.EndLine, r.EndColumn)
+    |> shouldEqual [|(2, 10, 2, 15); (2, 5, 2, 7); (1, 0, 1, 0)|]
+*)
+
+*)

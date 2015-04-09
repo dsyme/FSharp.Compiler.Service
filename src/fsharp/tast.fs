@@ -2929,7 +2929,7 @@ and
 
 #if EXTENSIBLE_DUMPER
 #if DEBUG
-    [<System.Diagnostics.DebuggerTypeProxy(typedefof<Internal.Utilities.Diagnostic.ExtensibleDumper>)>]
+    //[<System.Diagnostics.DebuggerTypeProxy(typedefof<Internal.Utilities.Diagnostic.ExtensibleDumper>)>]
 #endif  
 #endif  
     TType =
