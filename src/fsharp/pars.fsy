@@ -2918,6 +2918,9 @@ typedSeqExprBlock:
   | OBLOCKBEGIN typedSeqExpr recover 
       { if not $3 then reportParseErrorAt (rhs parseState 3) (FSComp.SR.parsUnexpectedEndOfFileExpression());
         exprFromParseError $2 }
+  | OBLOCKBEGIN oblockend                
+     { let m = (rhs2 parseState 1 2)
+       exprFromParseError (arbExpr("missingExpr2",m)) }
   | typedSeqExpr 
       { $1 }
 

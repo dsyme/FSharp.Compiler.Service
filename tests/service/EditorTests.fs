@@ -249,14 +249,14 @@ let ``Find function from member 1`` () =
       """
 type Test() = 
     let abc a b c = a + b + c
-    member x.Test = """ 
+    member x.Test =   """ 
 
     // Split the input & define file name
     let inputLines = input.Split('\n')
     let file = "/home/user/Test.fsx"
     let untyped, typeCheckResults =  parseAndTypeCheckFileInProject(file, input) 
 
-    let decls = typeCheckResults.GetDeclarationListInfo(Some untyped, 4, 21, inputLines.[3], [], "", fun _ -> false)|> Async.RunSynchronously
+    let decls = typeCheckResults.GetDeclarationListInfo(Some untyped, 4, 20, inputLines.[3], [], "", fun _ -> false)|> Async.RunSynchronously
     let item = decls.Items |> Array.tryFind (fun d -> d.Name = "abc")
     match item with
     | Some item -> 
