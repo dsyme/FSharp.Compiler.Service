@@ -110,6 +110,7 @@ namespace Microsoft.FSharp.Compiler.SimpleSourceCodeServices
     /// Provides simple services for checking and compiling F# scripts
     type public SimpleSourceCodeServices() =
 
+        let referenceResolver = MSBuildResolver.Resolver 
         let checker = InteractiveChecker.Create()
         let fileversion = 0
         let loadTime = DateTime.Now
@@ -151,7 +152,7 @@ namespace Microsoft.FSharp.Compiler.SimpleSourceCodeServices
             let errors, errorLogger, loggerProvider = mkCompilationErorHandlers()
             let result = 
                 tryCompile errorLogger (fun exiter -> 
-                    mainCompile (argv, (*bannerAlreadyPrinted*)true, (*openBinariesInMemory*)true, exiter, loggerProvider, tcImportsCapture, dynamicAssemblyCreator) )
+                    mainCompile (argv, referenceResolver, (*bannerAlreadyPrinted*)true, (*openBinariesInMemory*)true, exiter, loggerProvider, tcImportsCapture, dynamicAssemblyCreator) )
         
             errors.ToArray(), result
 
@@ -164,7 +165,7 @@ namespace Microsoft.FSharp.Compiler.SimpleSourceCodeServices
      
             let result = 
                 tryCompile errorLogger (fun exiter -> 
-                    compileOfAst ((*openBinariesInMemory=*)true, assemblyName, target, outFile, pdbFile, dependencies, noframework, exiter, loggerProvider, asts, tcImportsCapture, dynamicAssemblyCreator))
+                    compileOfAst (referenceResolver, (*openBinariesInMemory=*)true, assemblyName, target, outFile, pdbFile, dependencies, noframework, exiter, loggerProvider, asts, tcImportsCapture, dynamicAssemblyCreator))
 
             errors.ToArray(), result
 

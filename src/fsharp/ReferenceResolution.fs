@@ -14,80 +14,13 @@ module internal MSBuildResolver =
 #endif
 
     open Microsoft.FSharp.Compiler.AbstractIL.Internal.Library 
-
-    exception ResolutionFailure
-
-    /// Describes the location where the reference was found.
-    type ResolvedFrom =
-        | AssemblyFolders
-        | AssemblyFoldersEx
-        | TargetFrameworkDirectory
-        | RawFileName
-        | GlobalAssemblyCache
-        | Path of string
-        | Unknown
-            
-#if FX_MSBUILDRESOLVER_RUNTIMELIKE
-    type ResolutionEnvironment = CompileTimeLike | RuntimeLike | DesigntimeLike
-#else
-    type ResolutionEnvironment = 
-    | CompileTimeLike 
-    | RuntimeLike 
-    | DesigntimeLike
-
-#endif
+    open Microsoft.FSharp.Compiler.ReferenceResolver
     open System
     open Microsoft.Build.Tasks
     open Microsoft.Build.Utilities
     open Microsoft.Build.Framework
     open System.IO
     open System.Reflection
-
-    type ResolvedFile = 
-        { /// Item specification.
-          itemSpec:string
-          /// Location that the assembly was resolved from.
-          resolvedFrom:ResolvedFrom
-          /// The long fusion name of the assembly.
-          fusionName:string
-          /// The version of the assembly (like 4.0.0.0).
-          version:string
-          /// The name of the redist the assembly was found in.
-          redist:string        
-          /// Round-tripped baggage string.
-          baggage:string
-          }
-
-        override this.ToString() = sprintf "ResolvedFile(%s)" this.itemSpec
-
-    /// Reference resolution results. All paths are fully qualified.
-    type ResolutionResults = 
-        { /// Paths to primary references.
-          resolvedFiles:ResolvedFile[]
-          /// Paths to dependencies.
-          referenceDependencyPaths:string[]
-          /// Paths to related files (like .xml and .pdb).
-          relatedPaths:string[]
-          /// Paths to satellite assemblies used for localization.
-          referenceSatellitePaths:string[]
-          /// Additional files required to support multi-file assemblies.
-          referenceScatterPaths:string[]
-          /// Paths to files that reference resolution recommend be copied to the local directory.
-          referenceCopyLocalPaths:string[]
-          /// Binding redirects that reference resolution recommends for the app.config file.
-          suggestedBindingRedirects:string[] 
-        }
-
-        static member Empty = 
-          { resolvedFiles = [| |]
-            referenceDependencyPaths = [| |]
-            relatedPaths = [| |]
-            referenceSatellitePaths = [| |]
-            referenceScatterPaths = [| |]
-            referenceCopyLocalPaths = [| |]
-            suggestedBindingRedirects = [| |] 
-          }
-
 
     /// Get the Reference Assemblies directory for the .NET Framework on Window.
     let DotNetFrameworkReferenceAssembliesRootDirectoryOnWindows = 
@@ -182,7 +115,7 @@ module internal MSBuildResolver =
         let r : string list = []
         r
 #else
-        match Microsoft.Build.Utilities.ToolLocationHelper.GetPathToStandardLibraries(".NETFramework",version,"") with
+        match ToolLocationHelper.GetPathToStandardLibraries(".NETFramework",version,"") with
         | null | "" -> []
         | x -> [x]
 #endif
@@ -425,3 +358,16 @@ module internal MSBuildResolver =
             referenceCopyLocalPaths = set rootedResults.referenceCopyLocalPaths |> Set.union (set unrootedResults.referenceCopyLocalPaths) |> Set.toArray 
             suggestedBindingRedirects = set rootedResults.suggestedBindingRedirects |> Set.union (set unrootedResults.suggestedBindingRedirects) |> Set.toArray 
         }
+
+    let Resolver =
+       { new ReferenceResolver.Resolver with 
+           member __.HighestInstalledNetFrameworkVersionMajorMinor() = HighestInstalledNetFrameworkVersionMajorMinor()
+           member __.DotNetFrameworkReferenceAssembliesRootDirectoryOnWindows =  DotNetFrameworkReferenceAssembliesRootDirectoryOnWindows
+           member __.Resolve(resolutionEnvironment, references, targetFrameworkVersion, targetFrameworkDirectories, targetProcessorArchitecture,                
+                             outputDirectory, fsharpCoreExplicitDirOrFSharpBinariesDir, explicitIncludeDirs, implicitIncludeDir, frameworkRegistryBase, 
+                             assemblyFoldersSuffix, assemblyFoldersConditions, logMessage, logWarning, logError) =
+
+               Resolve(resolutionEnvironment, references, targetFrameworkVersion, targetFrameworkDirectories, targetProcessorArchitecture,                
+                outputDirectory, fsharpCoreExplicitDirOrFSharpBinariesDir, explicitIncludeDirs, implicitIncludeDir, frameworkRegistryBase, 
+                assemblyFoldersSuffix, assemblyFoldersConditions, logMessage, logWarning, logError) 
+       } 
