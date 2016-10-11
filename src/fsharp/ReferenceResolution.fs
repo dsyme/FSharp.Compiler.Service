@@ -23,7 +23,7 @@ module internal MSBuildResolver =
     open System.Reflection
 
     /// Get the Reference Assemblies directory for the .NET Framework on Window.
-    let DotNetFrameworkReferenceAssembliesRootDirectoryOnWindows = 
+    let DotNetFrameworkReferenceAssembliesRootDirectory = 
         // ProgramFilesX86 is correct for both x86 and x64 architectures 
         // (the reference assemblies are always in the 32-bit location, which is PF(x86) on an x64 machine)
         let PF = 
@@ -36,14 +36,14 @@ module internal MSBuildResolver =
     /// When targeting .NET 2.0-3.5 on Windows, we expand the {WindowsFramework} and {ReferenceAssemblies} paths manually
     let internal ReplaceVariablesForLegacyFxOnWindows(dirs: string list) =
         let windowsFramework = Environment.GetEnvironmentVariable("windir")+ @"\Microsoft.NET\Framework"
-        let referenceAssemblies = DotNetFrameworkReferenceAssembliesRootDirectoryOnWindows
+        let referenceAssemblies = DotNetFrameworkReferenceAssembliesRootDirectory
         dirs |> List.map(fun d -> d.Replace("{WindowsFramework}",windowsFramework).Replace("{ReferenceAssemblies}",referenceAssemblies))
 
     
     // ATTENTION!: the following code needs to be updated every time we are switching to the new MSBuild version because new .NET framework version was released
     // 1. List of frameworks
     // 2. DeriveTargetFrameworkDirectoriesFor45Plus
-    // 3. HighestInstalledNetFrameworkVersionMajorMinor
+    // 3. HighestInstalledNetFrameworkVersion
     // 4. GetPathToDotNetFrameworkImlpementationAssemblies
     [<Literal>]    
     let private Net10 = "v1.0"
@@ -121,18 +121,18 @@ module internal MSBuildResolver =
 #endif
 
     /// Use MSBuild to determine the version of the highest installed framework.
-    let HighestInstalledNetFrameworkVersionMajorMinor() =
+    let HighestInstalledNetFrameworkVersion() =
 #if MSBUILD_AT_LEAST_14
-        if box (ToolLocationHelper.GetPathToDotNetFramework(TargetDotNetFrameworkVersion.Version461)) <> null then 4, Net461
-        elif box (ToolLocationHelper.GetPathToDotNetFramework(TargetDotNetFrameworkVersion.Version46)) <> null then 4, Net46
+        if box (ToolLocationHelper.GetPathToDotNetFramework(TargetDotNetFrameworkVersion.Version461)) <> null then Net461
+        elif box (ToolLocationHelper.GetPathToDotNetFramework(TargetDotNetFrameworkVersion.Version46)) <> null then Net46
         // 4.5.2 enumeration is not available in Dev15 MSBuild version
-        //elif box (ToolLocationHelper.GetPathToDotNetFramework(TargetDotNetFrameworkVersion.Version452)) <> null then 4, Net452 
-        elif box (ToolLocationHelper.GetPathToDotNetFramework(TargetDotNetFrameworkVersion.Version451)) <> null then 4, Net451 
+        //elif box (ToolLocationHelper.GetPathToDotNetFramework(TargetDotNetFrameworkVersion.Version452)) <> null then Net452 
+        elif box (ToolLocationHelper.GetPathToDotNetFramework(TargetDotNetFrameworkVersion.Version451)) <> null then Net451 
 #else
-        if box (ToolLocationHelper.GetPathToDotNetFramework(TargetDotNetFrameworkVersion.Version451)) <> null then 4, Net451 
+        if box (ToolLocationHelper.GetPathToDotNetFramework(TargetDotNetFrameworkVersion.Version451)) <> null then Net451 
 #endif
-        elif box (ToolLocationHelper.GetPathToDotNetFramework(TargetDotNetFrameworkVersion.Version45)) <> null then 4, Net45 
-        else 4, Net45 // version is 4.5 assumed since this code is running.
+        elif box (ToolLocationHelper.GetPathToDotNetFramework(TargetDotNetFrameworkVersion.Version45)) <> null then Net45 
+        else Net45 // version is 4.5 assumed since this code is running.
 
     /// Derive the target framework directories.        
     let DeriveTargetFrameworkDirectories (targetFrameworkVersion:string, logMessage) =
@@ -164,18 +164,16 @@ module internal MSBuildResolver =
                     targetFrameworkVersion: string, 
                     targetFrameworkDirectories: string list,
                     targetProcessorArchitecture: string,                
-                    outputDirectory: string, 
-                    fsharpCoreExplicitDirOrFSharpBinariesDir: string,
+                    fsharpCoreDir: string,
                     explicitIncludeDirs: string list,
                     implicitIncludeDir: string,
-                    frameworkRegistryBase: string, 
-                    assemblyFoldersSuffix: string, 
-                    assemblyFoldersConditions: string, 
                     allowRawFileName: bool,
                     logMessage: (string -> unit), 
                     logWarning: (string -> string -> unit), 
                     logError: (string -> string -> unit)) =
                       
+        let frameworkRegistryBase, assemblyFoldersSuffix, assemblyFoldersConditions = 
+          "Software\Microsoft\.NetFramework", "AssemblyFoldersEx" , ""              
         if Array.isEmpty references then ResolutionResults.Empty else
 
         let backgroundException = ref false
@@ -265,13 +263,13 @@ module internal MSBuildResolver =
         let rawFileNamePath = if allowRawFileName then ["{RawFileName}"] else []
         let searchPaths = 
             match resolutionEnvironment with
-            | DesigntimeLike
+            | DesignTimeLike
             | RuntimeLike ->
                 logMessage("Using scripting resolution precedence.")
                 // These are search paths for runtime-like or scripting resolution. GAC searching is present.
                 rawFileNamePath @        // Quick-resolve straight to filename first 
                 explicitIncludeDirs @    // From -I, #I
-                [fsharpCoreExplicitDirOrFSharpBinariesDir] @    // Location of explicit reference to FSharp.Core, otherwise location of fsc.exe
+                [fsharpCoreDir] @    // Location of explicit reference to FSharp.Core, otherwise location of fsc.exe
                 [implicitIncludeDir] @   // Usually the project directory
                 ["{TargetFrameworkDirectory}"] @
                 [sprintf "{Registry:%s,%s,%s%s}" frameworkRegistryBase targetFrameworkVersion assemblyFoldersSuffix assemblyFoldersConditions] @
@@ -283,11 +281,10 @@ module internal MSBuildResolver =
                 ["{TargetFrameworkDirectory}"] @
                 rawFileNamePath @        // Quick-resolve straight to filename first
                 explicitIncludeDirs @    // From -I, #I
-                [fsharpCoreExplicitDirOrFSharpBinariesDir] @    // Location of explicit reference to FSharp.Core, otherwise location of fsc.exe
+                [fsharpCoreDir] @    // Location of explicit reference to FSharp.Core, otherwise location of fsc.exe
                 [implicitIncludeDir] @   // Usually the project directory
                 [sprintf "{Registry:%s,%s,%s%s}" frameworkRegistryBase targetFrameworkVersion assemblyFoldersSuffix assemblyFoldersConditions] @ // Like {Registry:Software\Microsoft\.NETFramework,v2.0,AssemblyFoldersEx}
                 ["{AssemblyFolders}"] @
-                [outputDirectory] @
                 ["{GAC}"] @
                 // use path to implementation assemblies as the last resort
                 GetPathToDotNetFrameworkImlpementationAssemblies targetFrameworkVersion
@@ -312,17 +309,20 @@ module internal MSBuildResolver =
                   baggage = p.GetMetadata("Baggage") } |]
 
         { resolvedFiles = resolvedFiles
+#if USE_MSBUILD_FULL_INFO
           referenceDependencyPaths = [| for p in rar.ResolvedDependencyFiles -> p.ItemSpec |]
           relatedPaths = [| for p in rar.RelatedFiles -> p.ItemSpec |]
           referenceSatellitePaths = [| for p in rar.SatelliteFiles -> p.ItemSpec |]
           referenceScatterPaths = [| for p in rar.ScatterFiles -> p.ItemSpec |]
           referenceCopyLocalPaths = [| for p in rar.CopyLocalFiles -> p.ItemSpec |]
-          suggestedBindingRedirects = [| for p in rar.SuggestedRedirects -> p.ItemSpec |] }
+          suggestedBindingRedirects = [| for p in rar.SuggestedRedirects -> p.ItemSpec |] 
+#endif
+         }
 
     /// Perform the resolution on rooted and unrooted paths, and then combine the results.
     let Resolve(resolutionEnvironment, references, targetFrameworkVersion, targetFrameworkDirectories, targetProcessorArchitecture,                
-                outputDirectory, fsharpCoreExplicitDirOrFSharpBinariesDir, explicitIncludeDirs, implicitIncludeDir, frameworkRegistryBase, 
-                assemblyFoldersSuffix, assemblyFoldersConditions, logMessage, logWarning, logError) =
+                fsharpCoreDir, explicitIncludeDirs, implicitIncludeDir,  
+                logMessage, logWarning, logError) =
 
         // The {RawFileName} target is 'dangerous', in the sense that is uses <c>Directory.GetCurrentDirectory()</c> to resolve unrooted file paths.
         // It is unreliable to use this mutable global state inside Visual Studio.  As a result, we partition all references into a "rooted" set
@@ -344,30 +344,32 @@ module internal MSBuildResolver =
 
         let rooted, unrooted = references |> Array.partition (fst >> FileSystem.IsPathRootedShim)
 
-        let rootedResults = ResolveCore(resolutionEnvironment, rooted,  targetFrameworkVersion, targetFrameworkDirectories, targetProcessorArchitecture, outputDirectory, fsharpCoreExplicitDirOrFSharpBinariesDir, explicitIncludeDirs, implicitIncludeDir, frameworkRegistryBase, assemblyFoldersSuffix, assemblyFoldersConditions, true, logMessage, logWarning, logError)
+        let rootedResults = ResolveCore(resolutionEnvironment, rooted,  targetFrameworkVersion, targetFrameworkDirectories, targetProcessorArchitecture, fsharpCoreDir, explicitIncludeDirs, implicitIncludeDir, true, logMessage, logWarning, logError)
 
-        let unrootedResults = ResolveCore(resolutionEnvironment, unrooted,  targetFrameworkVersion, targetFrameworkDirectories, targetProcessorArchitecture, outputDirectory, fsharpCoreExplicitDirOrFSharpBinariesDir, explicitIncludeDirs, implicitIncludeDir, frameworkRegistryBase, assemblyFoldersSuffix, assemblyFoldersConditions, false, logMessage, logWarning, logError)
+        let unrootedResults = ResolveCore(resolutionEnvironment, unrooted,  targetFrameworkVersion, targetFrameworkDirectories, targetProcessorArchitecture, fsharpCoreDir, explicitIncludeDirs, implicitIncludeDir, false, logMessage, logWarning, logError)
 
         // now unify the two sets of results
         {
             resolvedFiles = Array.concat [| rootedResults.resolvedFiles; unrootedResults.resolvedFiles |]
+#if USE_MSBUILD_FULL_INFO
             referenceDependencyPaths = set rootedResults.referenceDependencyPaths |> Set.union (set unrootedResults.referenceDependencyPaths) |> Set.toArray 
             relatedPaths = set rootedResults.relatedPaths |> Set.union (set unrootedResults.relatedPaths) |> Set.toArray 
             referenceSatellitePaths = set rootedResults.referenceSatellitePaths |> Set.union (set unrootedResults.referenceSatellitePaths) |> Set.toArray 
             referenceScatterPaths = set rootedResults.referenceScatterPaths |> Set.union (set unrootedResults.referenceScatterPaths) |> Set.toArray 
             referenceCopyLocalPaths = set rootedResults.referenceCopyLocalPaths |> Set.union (set unrootedResults.referenceCopyLocalPaths) |> Set.toArray 
             suggestedBindingRedirects = set rootedResults.suggestedBindingRedirects |> Set.union (set unrootedResults.suggestedBindingRedirects) |> Set.toArray 
+#endif
         }
 
     let Resolver =
        { new ReferenceResolver.Resolver with 
-           member __.HighestInstalledNetFrameworkVersionMajorMinor() = HighestInstalledNetFrameworkVersionMajorMinor()
-           member __.DotNetFrameworkReferenceAssembliesRootDirectoryOnWindows =  DotNetFrameworkReferenceAssembliesRootDirectoryOnWindows
+           member __.HighestInstalledNetFrameworkVersion() = HighestInstalledNetFrameworkVersion()
+           member __.DotNetFrameworkReferenceAssembliesRootDirectory =  DotNetFrameworkReferenceAssembliesRootDirectory
            member __.Resolve(resolutionEnvironment, references, targetFrameworkVersion, targetFrameworkDirectories, targetProcessorArchitecture,                
-                             outputDirectory, fsharpCoreExplicitDirOrFSharpBinariesDir, explicitIncludeDirs, implicitIncludeDir, frameworkRegistryBase, 
-                             assemblyFoldersSuffix, assemblyFoldersConditions, logMessage, logWarning, logError) =
+                             fsharpCoreDir, explicitIncludeDirs, implicitIncludeDir,
+                             logMessage, logWarning, logError) =
 
                Resolve(resolutionEnvironment, references, targetFrameworkVersion, targetFrameworkDirectories, targetProcessorArchitecture,                
-                outputDirectory, fsharpCoreExplicitDirOrFSharpBinariesDir, explicitIncludeDirs, implicitIncludeDir, frameworkRegistryBase, 
-                assemblyFoldersSuffix, assemblyFoldersConditions, logMessage, logWarning, logError) 
+                fsharpCoreDir, explicitIncludeDirs, implicitIncludeDir, 
+                logMessage, logWarning, logError) 
        } 

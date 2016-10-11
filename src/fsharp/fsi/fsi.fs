@@ -2385,7 +2385,7 @@ type FsiEvaluationSession (fsi: FsiEvaluationSessionHostConfig, argv:string[], i
 #if FX_MSBUILDRESOLVER_RUNTIMELIKE
     do tcConfigB.resolutionEnvironment <- ReferenceResolver.RuntimeLike // See Bug 3608
 #else
-    do tcConfigB.resolutionEnvironment <- ReferenceResolver.DesigntimeLike
+    do tcConfigB.resolutionEnvironment <- ReferenceResolver.DesignTimeLike
 #endif
     do tcConfigB.useFsiAuxLib <- fsi.UseFsiAuxLib
 

@@ -276,9 +276,6 @@ type TcConfigBuilder =
       mutable checkOverflow:bool
       mutable showReferenceResolutions:bool
       mutable outputFile : string option
-      mutable resolutionFrameworkRegistryBase : string
-      mutable resolutionAssemblyFoldersSuffix : string 
-      mutable resolutionAssemblyFoldersConditions : string          
       mutable platform : ILPlatform option
       mutable prefer32Bit : bool
       mutable useSimpleResolution : bool
@@ -430,9 +427,6 @@ type TcConfig =
     member checkOverflow:bool
     member showReferenceResolutions:bool
     member outputFile : string option
-    member resolutionFrameworkRegistryBase : string
-    member resolutionAssemblyFoldersSuffix : string 
-    member resolutionAssemblyFoldersConditions : string          
     member platform : ILPlatform option
     member prefer32Bit : bool
     member useSimpleResolution : bool

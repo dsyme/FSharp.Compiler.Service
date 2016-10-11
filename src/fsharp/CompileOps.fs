@@ -2054,9 +2054,6 @@ type TcConfigBuilder =
       mutable checkOverflow: bool
       mutable showReferenceResolutions:bool
       mutable outputFile : string option
-      mutable resolutionFrameworkRegistryBase : string
-      mutable resolutionAssemblyFoldersSuffix : string 
-      mutable resolutionAssemblyFoldersConditions : string    
       mutable platform : ILPlatform option
       mutable prefer32Bit : bool
       mutable useSimpleResolution : bool
@@ -2223,9 +2220,6 @@ type TcConfigBuilder =
           checkOverflow=false
           showReferenceResolutions=false
           outputFile=None
-          resolutionFrameworkRegistryBase = "Software\Microsoft\.NetFramework"
-          resolutionAssemblyFoldersSuffix = "AssemblyFoldersEx" 
-          resolutionAssemblyFoldersConditions = ""              
           platform = None
           prefer32Bit = false
           useSimpleResolution = runningOnMono
@@ -2612,7 +2606,7 @@ type TcConfig private (data : TcConfigBuilder,validate:bool) =
             with e ->
                 error(Error(FSComp.SR.buildErrorOpeningBinaryFile(filename, e.Message), rangeStartup))
         | _ ->
-            None, data.referenceResolver.HighestInstalledNetFrameworkVersionMajorMinor(), false
+            None, (4, data.referenceResolver.HighestInstalledNetFrameworkVersion()), false
 
     // Note: anycpu32bitpreferred can only be used with .Net version 4.5 and above
     // but now there is no way to discriminate between 4.0 and 4.5,
@@ -2710,9 +2704,6 @@ type TcConfig private (data : TcConfigBuilder,validate:bool) =
     member x.checkOverflow = data.checkOverflow
     member x.showReferenceResolutions = data.showReferenceResolutions
     member x.outputFile  = data.outputFile
-    member x.resolutionFrameworkRegistryBase  = data.resolutionFrameworkRegistryBase
-    member x.resolutionAssemblyFoldersSuffix  = data. resolutionAssemblyFoldersSuffix
-    member x.resolutionAssemblyFoldersConditions  = data.  resolutionAssemblyFoldersConditions  
     member x.platform  = data.platform
     member x.prefer32Bit = data.prefer32Bit
     member x.useSimpleResolution  = data.useSimpleResolution
@@ -2726,7 +2717,7 @@ type TcConfig private (data : TcConfigBuilder,validate:bool) =
     member x.importAllReferencesOnly = data.importAllReferencesOnly
     member x.simulateException = data.simulateException
     member x.printAst  = data.printAst
-    member x.targetFrameworkVersionMajorMinor = targetFrameworkVersionValue
+    member x.targetFrameworkVersion = targetFrameworkVersionValue
     member x.tokenizeOnly  = data.tokenizeOnly
     member x.testInteractionParser  = data.testInteractionParser
     member x.reportNumDecls  = data.reportNumDecls
@@ -2818,40 +2809,39 @@ type TcConfig private (data : TcConfigBuilder,validate:bool) =
         | Some x -> 
             [tcConfig.MakePathAbsolute x]
         | None -> 
-#if ENABLE_MONO_SUPPORT
-            if runningOnMono then 
-                [ let runtimeRoot = System.Runtime.InteropServices.RuntimeEnvironment.GetRuntimeDirectory()
-                  let runtimeRootWithoutSlash = runtimeRoot.TrimEnd('/', '\\')
-                  let api = runtimeRootWithoutSlash + "-api"
-                  if Directory.Exists(api) then
-                     yield api
-                     let facades = Path.Combine(api, "Facades")
-                     if Directory.Exists(facades) then
-                        yield facades
-                  yield runtimeRoot // The defaut FSharp.Core is found in lib/mono/4.5
-                  let facades = Path.Combine(runtimeRoot, "Facades")
-                  if Directory.Exists(facades) then
-                     yield facades
-                ]
-            else                                
-#endif
-                try 
-                  [ 
-                    match tcConfig.resolutionEnvironment with
+          try 
+           [ match tcConfig.resolutionEnvironment with
 #if FX_MSBUILDRESOLVER_RUNTIMELIKE
-                    | ReferenceResolver.RuntimeLike ->
-                        yield System.Runtime.InteropServices.RuntimeEnvironment.GetRuntimeDirectory() 
+             | ReferenceResolver.RuntimeLike ->
+                 yield System.Runtime.InteropServices.RuntimeEnvironment.GetRuntimeDirectory() 
 #endif
-                    | _ -> 
-                      let frameworkRoot = tcConfig.referenceResolver.DotNetFrameworkReferenceAssembliesRootDirectoryOnWindows
-                      let frameworkRootVersion = Path.Combine(frameworkRoot,tcConfig.targetFrameworkVersionMajorMinor)
+             | ReferenceResolver.CompileTimeLike 
+             | ReferenceResolver.DesignTimeLike ->
+#if ENABLE_MONO_SUPPORT
+                if runningOnMono then 
+                    let runtimeRoot = System.Runtime.InteropServices.RuntimeEnvironment.GetRuntimeDirectory()
+                    let runtimeRootWithoutSlash = runtimeRoot.TrimEnd('/', '\\')
+                    let api = runtimeRootWithoutSlash + "-api"
+                    if Directory.Exists(api) then
+                       yield api
+                       let facades = Path.Combine(api, "Facades")
+                       if Directory.Exists(facades) then
+                          yield facades
+                    yield runtimeRoot // The defaut FSharp.Core is found in lib/mono/4.5
+                    let facades = Path.Combine(runtimeRoot, "Facades")
+                    if Directory.Exists(facades) then
+                       yield facades
+                else                                
+#endif
+                      let frameworkRoot = tcConfig.referenceResolver.DotNetFrameworkReferenceAssembliesRootDirectory
+                      let frameworkRootVersion = Path.Combine(frameworkRoot,tcConfig.targetFrameworkVersion)
                       yield frameworkRootVersion
                       let facades = Path.Combine(frameworkRootVersion, "Facades")
                       if Directory.Exists(facades) then
                          yield facades
-                  ]                    
-                with e -> 
-                    errorRecovery e range0; [] 
+            ]                    
+          with e -> 
+             errorRecovery e range0; [] 
 
     member tcConfig.ComputeLightSyntaxInitialStatus filename = 
         use unwindBuildPhase = PushThreadBuildPhaseUntilUnwind (BuildPhase.Parameter)
@@ -3044,7 +3034,7 @@ type TcConfig private (data : TcConfigBuilder,validate:bool) =
                     if showMessages && mode = ReportErrors then 
                         errorR(MSBuildReferenceResolutionError(code,message,errorAndWarningRange)))
 
-            let targetFrameworkMajorMinor = tcConfig.targetFrameworkVersionMajorMinor
+            let targetFrameworkVersion = tcConfig.targetFrameworkVersion
 
             let targetProcessorArchitecture = 
                     match tcConfig.platform with
@@ -3053,15 +3043,7 @@ type TcConfig private (data : TcConfigBuilder,validate:bool) =
                     | Some(AMD64) -> "amd64"
                     | Some(IA64) -> "ia64"
 
-            let outputDirectory = 
-                match tcConfig.outputFile with 
-                | Some(outputFile) -> tcConfig.MakePathAbsolute outputFile
-                | None -> tcConfig.implicitIncludeDir
-
-            let targetFrameworkDirectories =
-                match tcConfig.clrRoot with
-                | Some(clrRoot) -> [tcConfig.MakePathAbsolute clrRoot]
-                | None -> []
+            let targetFrameworkDirectories = tcConfig.ClrRoot 
                              
             // First, try to resolve everything as a file using simple resolution
             let resolvedAsFile = 
@@ -3078,16 +3060,12 @@ type TcConfig private (data : TcConfigBuilder,validate:bool) =
                     tcConfig.referenceResolver.Resolve
                        (tcConfig.resolutionEnvironment,
                         references,
-                        targetFrameworkMajorMinor,   // TargetFrameworkVersionMajorMinor
-                        targetFrameworkDirectories,  // TargetFrameworkDirectories 
-                        targetProcessorArchitecture, // TargetProcessorArchitecture
-                        Path.GetDirectoryName(outputDirectory), // Output directory
+                        targetFrameworkVersion,
+                        targetFrameworkDirectories, 
+                        targetProcessorArchitecture, 
                         tcConfig.fsharpBinariesDir, // FSharp binaries directory
                         tcConfig.includes, // Explicit include directories
                         tcConfig.implicitIncludeDir, // Implicit include directory (likely the project directory)
-                        tcConfig.resolutionFrameworkRegistryBase, 
-                        tcConfig.resolutionAssemblyFoldersSuffix, 
-                        tcConfig.resolutionAssemblyFoldersConditions, 
                         logmessage showMessages, logwarning showMessages, logerror showMessages)
                 with 
                     ReferenceResolver.ResolutionFailure -> error(Error(FSComp.SR.buildAssemblyResolutionFailed(),errorAndWarningRange))
@@ -4926,7 +4904,7 @@ module private ScriptPreprocessClosure =
 
         tcConfigB.resolutionEnvironment <-
             match codeContext with 
-            | CodeContext.Editing -> ReferenceResolver.DesigntimeLike
+            | CodeContext.Editing -> ReferenceResolver.DesignTimeLike
 #if FX_MSBUILDRESOLVER_RUNTIMELIKE
             | CodeContext.Compilation | CodeContext.Evaluation -> ReferenceResolver.RuntimeLike
 #else

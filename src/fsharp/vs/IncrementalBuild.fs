@@ -1778,7 +1778,7 @@ type IncrementalBuilder(frameworkTcImportsCache: FrameworkImportsCache, tcConfig
                 tcConfigB.openBinariesInMemory <- true
                 tcConfigB.resolutionEnvironment 
                     <- if useScriptResolutionRules 
-                        then ReferenceResolver.DesigntimeLike  
+                        then ReferenceResolver.DesignTimeLike  
                         else ReferenceResolver.CompileTimeLike
                 
                 tcConfigB.conditionalCompilationDefines <- 
