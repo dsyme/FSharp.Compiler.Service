@@ -378,7 +378,12 @@ type NameResolutionEnv =
         | FullyQualified -> nenv.eFullyQualifiedModulesAndNamespaces 
         | OpenQualified -> nenv.eModulesAndNamespaces 
 
-    member nenv.Derive(f) = {f nenv with eDerivation = (f :: nenv.eDerivation ) }
+    member nenv.Derive(f) = 
+        // NOTE: THis does _not_ capture nenv itself in the derivation
+        // NOTE: All operations building a nenv must be added to this list
+        // TODO: Only store the list of derivation closures when there is a editor sink for captured name resolutions
+        {f nenv with eDerivation = (f :: nenv.eDerivation ) }
+
     static member Reconstitute(ops,g) = List.foldBack (fun f x -> f x) ops (NameResolutionEnv.Empty(g))
 
 and NameResolutionEnvDerivation = 
