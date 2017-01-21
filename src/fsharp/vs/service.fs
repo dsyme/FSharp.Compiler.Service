@@ -556,11 +556,11 @@ type TypeCheckInfo
         let resEnv = 
             match !bestAlmostIncludedSoFar with 
             | Some (_m,env,ad) -> 
-                env,ad
+                NameResolutionEnv.Reconstitute(env,g),ad
             | None -> 
                 match mostDeeplyNestedEnclosingScope with 
                 | Some (_m,env,ad) -> 
-                    env,ad
+                    NameResolutionEnv.Reconstitute(env,g),ad
                 | None -> 
                     (sFallback,AccessibleFromSomeFSharpCode)
         let pm = mkRange mainInputFileName cursorPos cursorPos 
@@ -616,7 +616,8 @@ type TypeCheckInfo
         // If we're looking for members using a residue, we'd expect only
         // a single item (pick the first one) and we need the residue (which may be "")
         | CNR(_,Item.Types(_,(typ::_)),_,denv,nenv,ad,m)::_, Some _ -> 
-            let items = ResolveCompletionsInType ncenv (nenv.Force()) (ResolveCompletionTargets.All(ConstraintSolver.IsApplicableMethApprox g amap m)) m ad true typ 
+            let nenv = NameResolutionEnv.Reconstitute(nenv,g)
+            let items = ResolveCompletionsInType ncenv nenv (ResolveCompletionTargets.All(ConstraintSolver.IsApplicableMethApprox g amap m)) m ad true typ 
             ReturnItemsOfType items g denv m filterCtors hasTextChangedSinceLastTypecheck NameResResult.Members 
         
         // Value reference from the name resolution. Primarily to disallow "let x.$ = 1"
@@ -648,7 +649,8 @@ type TypeCheckInfo
                         AccessibleFrom(paths, None)
                 | _ -> ad
 
-              let items = ResolveCompletionsInType ncenv (nenv.Force()) (ResolveCompletionTargets.All(ConstraintSolver.IsApplicableMethApprox g amap m)) m ad false ty
+              let nenv = NameResolutionEnv.Reconstitute(nenv,g)
+              let items = ResolveCompletionsInType ncenv nenv (ResolveCompletionTargets.All(ConstraintSolver.IsApplicableMethApprox g amap m)) m ad false ty
               ReturnItemsOfType items g denv m filterCtors hasTextChangedSinceLastTypecheck NameResResult.Members
         
         // No residue, so the items are the full resolution of the name
@@ -677,7 +679,7 @@ type TypeCheckInfo
         let result =
             match cnrs with
             | CNR(_, Item.CtorGroup(_, ((ctor::_) as ctors)), _, denv, nenv, ad, m)::_ ->
-                let props = ResolveCompletionsInType ncenv (nenv.Force()) ResolveCompletionTargets.SettablePropertiesAndFields m ad false ctor.EnclosingType
+                let props = ResolveCompletionsInType ncenv (NameResolutionEnv.Reconstitute(nenv,denv.g)) ResolveCompletionTargets.SettablePropertiesAndFields m ad false ctor.EnclosingType
                 let parameters = CollectParameters ctors amap m
                 Some (denv, m, props @ parameters)
             | CNR(_, Item.MethodGroup(_, methods, _), _, denv, nenv, ad, m)::_ ->
@@ -685,7 +687,8 @@ type TypeCheckInfo
                     methods
                     |> List.collect (fun meth ->
                         let retTy = meth.GetFSharpReturnTy(amap, m, meth.FormalMethodInst)
-                        ResolveCompletionsInType ncenv (nenv.Force()) ResolveCompletionTargets.SettablePropertiesAndFields m ad false retTy
+                        let nenv = NameResolutionEnv.Reconstitute(nenv,g)
+                        ResolveCompletionsInType ncenv nenv ResolveCompletionTargets.SettablePropertiesAndFields m ad false retTy
                     )
                 let parameters = CollectParameters methods amap m
                 Some (denv, m, props @ parameters)
@@ -775,6 +778,7 @@ type TypeCheckInfo
             match bestQual with
             | Some bestQual ->
                 let (_,typ,denv,nenv,ad,m) = bestQual 
+                let nenv = NameResolutionEnv.Reconstitute(nenv,g)
                 let items = ResolveCompletionsInType ncenv nenv (ResolveCompletionTargets.All(ConstraintSolver.IsApplicableMethApprox g amap m)) m ad false typ 
                 let items = items |> RemoveDuplicateItems g
                 let items = items |> RemoveExplicitlySuppressed g

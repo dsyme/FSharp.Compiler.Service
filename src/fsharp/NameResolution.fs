@@ -379,9 +379,10 @@ type NameResolutionEnv =
         | OpenQualified -> nenv.eModulesAndNamespaces 
 
     member nenv.Derive(f) = {f nenv with eDerivation = (f :: nenv.eDerivation ) }
+    static member Reconstitute(ops,g) = List.foldBack (fun f x -> f x) ops (NameResolutionEnv.Empty(g))
 
-and NameResolutionEnvDerivation = (NameResolutionEnv -> NameResolutionEnv) list
-
+and NameResolutionEnvDerivation = 
+    (NameResolutionEnv -> NameResolutionEnv) list
 //-------------------------------------------------------------------------
 // Helpers to do with extension members
 //------------------------------------------------------------------------- 
@@ -1314,9 +1315,7 @@ type CapturedNameResolution(p:pos, i:Item, io:ItemOccurence, de:DisplayEnv, nre:
     member this.Item = i
     member this.ItemOccurence = io
     member this.DisplayEnv = de
-    member this.NameResolutionEnv = 
-        /// Recompute the NameResolutionEnv if needed 
-        lazy List.foldBack (fun f x -> f x) nre (NameResolutionEnv.Empty(de.g))
+    member this.NameResolutionEnv = nre
     member this.AccessorDomain = ad
     member this.Range = m
     member this.DebugToString() = 
@@ -1324,8 +1323,8 @@ type CapturedNameResolution(p:pos, i:Item, io:ItemOccurence, de:DisplayEnv, nre:
 
 /// Represents container for all name resolutions that were met so far when typechecking some particular file
 type TcResolutions
-    (capturedEnvs : ResizeArray<range * NameResolutionEnv * AccessorDomain>,
-     capturedExprTypes : ResizeArray<pos * TType * DisplayEnv * NameResolutionEnv * AccessorDomain * range>,
+    (capturedEnvs : ResizeArray<range * NameResolutionEnvDerivation * AccessorDomain>,
+     capturedExprTypes : ResizeArray<pos * TType * DisplayEnv * NameResolutionEnvDerivation * AccessorDomain * range>,
      capturedNameResolutions : ResizeArray<CapturedNameResolution>,
      capturedMethodGroupResolutions : ResizeArray<CapturedNameResolution>) = 
 
@@ -1377,11 +1376,11 @@ type TcResultsSinkImpl(g, ?source: string) =
     interface ITypecheckResultsSink with
         member sink.NotifyEnvWithScope(m,nenv,ad) = 
             if allowedRange m then 
-                capturedEnvs.Add((m,nenv,ad)) 
+                capturedEnvs.Add((m,nenv.eDerivation,ad)) 
 
         member sink.NotifyExprHasType(endPos,ty,denv,nenv,ad,m) = 
             if allowedRange m then 
-                capturedExprTypings.Add((endPos,ty,denv,nenv,ad,m))
+                capturedExprTypings.Add((endPos,ty,denv,nenv.eDerivation,ad,m))
 
         member sink.NotifyNameResolution(endPos,item,itemMethodGroup,occurenceType,denv,nenv,ad,m,replace) = 
             // Desugaring some F# constructs (notably computation expressions with custom operators)

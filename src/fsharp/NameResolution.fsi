@@ -102,6 +102,7 @@ type NameResolutionEnv =
     static member Empty : g:TcGlobals -> NameResolutionEnv
     member DisplayEnv : DisplayEnv
     member FindUnqualifiedItem : string -> Item
+    static member Reconstitute : NameResolutionEnvDerivation * TcGlobals -> NameResolutionEnv
 
 and NameResolutionEnvDerivation = (NameResolutionEnv -> NameResolutionEnv) list
 
@@ -211,7 +212,7 @@ type internal CapturedNameResolution =
     member DisplayEnv : DisplayEnv
 
     /// Naming environment--for example, currently open namespaces.
-    member NameResolutionEnv : Lazy<NameResolutionEnv>
+    member NameResolutionEnv : NameResolutionEnvDerivation
 
     /// The access rights of code at the location
     member AccessorDomain : AccessorDomain
@@ -224,11 +225,11 @@ type internal TcResolutions =
 
     /// Name resolution environments for every interesting region in the file. These regions may
     /// overlap, in which case the smallest region applicable should be used.
-    member CapturedEnvs : ResizeArray<range * NameResolutionEnv * AccessorDomain>
+    member CapturedEnvs : ResizeArray<range * NameResolutionEnvDerivation * AccessorDomain>
 
     /// Information of exact types found for expressions, that can be to the left of a dot.
     /// typ - the inferred type for an expression
-    member CapturedExpressionTypings : ResizeArray<pos * TType * DisplayEnv * NameResolutionEnv * AccessorDomain * range>
+    member CapturedExpressionTypings : ResizeArray<pos * TType * DisplayEnv * NameResolutionEnvDerivation * AccessorDomain * range>
 
     /// Exact name resolutions
     member CapturedNameResolutions : ResizeArray<CapturedNameResolution>
