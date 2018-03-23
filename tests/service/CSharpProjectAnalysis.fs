@@ -22,51 +22,14 @@ open Microsoft.FSharp.Compiler.SourceCodeServices
 
 open FSharp.Compiler.Service.Tests.Common
 
-let internal getProjectReferences (content, dllFiles, libDirs, otherFlags) = 
-    let otherFlags = defaultArg otherFlags []
-    let libDirs = defaultArg libDirs []
-    let base1 = Path.GetTempFileName()
-    let dllName = Path.ChangeExtension(base1, ".dll")
-    let fileName1 = Path.ChangeExtension(base1, ".fs")
-    let projFileName = Path.ChangeExtension(base1, ".fsproj")
-    File.WriteAllText(fileName1, content)
-    let options =
-        checker.GetProjectOptionsFromCommandLineArgs(projFileName,
-            [| yield "--debug:full" 
-               yield "--define:DEBUG" 
-               yield "--optimize-" 
-               yield "--out:" + dllName
-               yield "--doc:test.xml" 
-               yield "--warn:3" 
-               yield "--fullpaths" 
-               yield "--flaterrors" 
-               yield "--target:library" 
-               for dllFile in dllFiles do
-                 yield "-r:"+dllFile
-               for libDir in libDirs do
-                 yield "-I:"+libDir
-               yield! otherFlags
-               yield fileName1 |])
-    let results = checker.ParseAndCheckProject(options) |> Async.RunSynchronously
-    if results.HasCriticalErrors then
-        let builder = new System.Text.StringBuilder()
-        for err in results.Errors do
-            builder.AppendLine(sprintf "**** %s: %s" (if err.Severity = FSharpErrorSeverity.Error then "error" else "warning") err.Message)
-            |> ignore
-        failwith (builder.ToString())
-    let assemblies =
-        results.ProjectContext.GetReferencedAssemblies()
-        |> List.map(fun x -> x.SimpleName, x)
-        |> dict
-    results, assemblies
-
+#if !FCS // disabled in FCS testing because the CSharp_Analysis.dll is not put in the right place
 [<Test>]
 #if NETCOREAPP2_0
 [<Ignore("SKIPPED: need to check if these tests can be enabled for .NET Core testing of FSharp.Compiler.Service")>]
 #endif
 let ``Test that csharp references are recognized as such`` () = 
     let csharpAssembly = PathRelativeToTestAssembly "CSharp_Analysis.dll"
-    let _, table = getProjectReferences("""module M""", [csharpAssembly], None, None)
+    let _, table = getProjectReferences("""module M""", [csharpAssembly])
     let ass = table.["CSharp_Analysis"]
     let search = ass.Contents.Entities |> Seq.tryFind (fun e -> e.DisplayName = "CSharpClass") 
     Assert.True search.IsSome
@@ -112,7 +75,7 @@ let _ = CSharpOuterClass.InnerEnum.Case1
 let _ = CSharpOuterClass.InnerClass.StaticMember()
 """
 
-    let results, _ = getProjectReferences(content, [csharpAssembly], None, None)
+    let results, _ = getProjectReferences(content, [csharpAssembly])
     results.GetAllUsesOfAllSymbols()
     |> Async.RunSynchronously
     |> Array.map (fun su -> su.Symbol.ToString())
@@ -133,7 +96,7 @@ open FSharp.Compiler.Service.Tests
 
 let _ = CSharpClass(0)
 """
-    let results, _ = getProjectReferences(content, [csharpAssembly], None, None)
+    let results, _ = getProjectReferences(content, [csharpAssembly])
     let ctor =
             results.GetAllUsesOfAllSymbols()
             |> Async.RunSynchronously
@@ -146,3 +109,4 @@ let _ = CSharpClass(0)
         Seq.exists (fun (mfv : FSharpMemberOrFunctionOrValue) -> mfv.IsEffectivelySameAs ctor) members |> should be True
     | None -> failwith "Expected Some for DeclaringEntity"
 
+#endif

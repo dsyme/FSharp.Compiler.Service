@@ -3,6 +3,9 @@
   * FSharp.Compiler.Service nuget now uses net45 and netstandard2.0
   * FSharp.Compiler.Service netstandard2.0 now supports type providers
   
+#### 20.0.1
+  * Integrate visualfsharp master
+
 #### 19.0.1
   * Rename ``LogicalEnclosingEntity`` to ``ApparentEnclosingEntity`` for consistency int he F# codebase terminology.
   * Rename ``EnclosingEntity`` to ``DeclaringEntity``.  In the case of extension properties, ``EnclosingEntity`` was incorrectly returning the logical enclosing entity (i.e. the type the property appears to extend), and in this case ``ApparentEnclosingEntity`` should be used instead.
